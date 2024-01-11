@@ -178,6 +178,16 @@ typedef struct VFIOGroup {
 #define TYPE_HOST_IOMMU_DEVICE_IOMMUFD_VFIO \
             TYPE_HOST_IOMMU_DEVICE_IOMMUFD "-vfio"
 
+OBJECT_DECLARE_SIMPLE_TYPE(HostIOMMUDeviceIOMMUFDVFIO,
+                           HOST_IOMMU_DEVICE_IOMMUFD_VFIO)
+
+/* Abstraction of host IOMMU device with VFIO IOMMUFD backend */
+struct HostIOMMUDeviceIOMMUFDVFIO {
+    HostIOMMUDeviceIOMMUFD parent_obj;
+
+    VFIODevice *vdev;
+};
+
 typedef struct VFIODMABuf {
     QemuDmaBuf *buf;
     uint32_t pos_x, pos_y, pos_updates;
