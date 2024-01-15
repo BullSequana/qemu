@@ -625,6 +625,10 @@ static bool hiod_iommufd_vfio_realize(HostIOMMUDevice *hiod, void *opaque,
                                       Error **errp)
 {
     VFIODevice *vdev = opaque;
+    VFIOIOMMUFDContainer *container = container_of(vdev->bcontainer,
+                                                   VFIOIOMMUFDContainer,
+                                                   bcontainer);
+    HostIOMMUDeviceIOMMUFD *idev = HOST_IOMMU_DEVICE_IOMMUFD(hiod);
     HostIOMMUDeviceCaps *caps = &hiod->caps;
     enum iommu_hw_info_type type;
     union {
@@ -639,6 +643,9 @@ static bool hiod_iommufd_vfio_realize(HostIOMMUDevice *hiod, void *opaque,
     hiod->name = g_strdup(vdev->name);
     caps->type = type;
     caps->aw_bits = vfio_device_get_aw_bits(vdev);
+    idev->iommufd = vdev->iommufd;
+    idev->devid = vdev->devid;
+    idev->ioas_id = container->ioas_id;
 
     return true;
 }
