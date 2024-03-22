@@ -5355,6 +5355,13 @@ static int vtd_num_indexes(IOMMUMemoryRegion *iommu)
 {
     return VTD_IDX_COUNT;
 }
+
+static uint8_t vtd_get_addr_width(IOMMUMemoryRegion *iommu)
+{
+    VTDAddressSpace *vtd_as = container_of(iommu, VTDAddressSpace, iommu);
+    return vtd_as->iommu_state->aw_bits;
+}
+
 static void vtd_iommu_memory_region_class_init(ObjectClass *klass,
                                                      void *data)
 {
@@ -5367,6 +5374,7 @@ static void vtd_iommu_memory_region_class_init(ObjectClass *klass,
     imrc->get_min_page_size = vtd_get_min_page_size;
     imrc->iommu_pri_request_page = vtd_iommu_pri_request_page;
     imrc->attrs_to_index = vtd_attrs_to_index;
+    imrc->get_addr_width = vtd_get_addr_width;
     imrc->num_indexes = vtd_num_indexes;
 }
 
