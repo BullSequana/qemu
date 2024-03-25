@@ -218,6 +218,27 @@ typedef struct IOMMUTLBEvent {
     IOMMUTLBEntry entry;
 } IOMMUTLBEvent;
 
+/* Page Request Interface */
+typedef enum {
+    IOMMU_PRI_RESP_SUCCESS,
+    IOMMU_PRI_RESP_INVALID_REQUEST,
+    IOMMU_PRI_RESP_FAILURE,
+} IOMMUPRIResponseCode;
+
+typedef struct IOMMUPRIResponse {
+    IOMMUPRIResponseCode response_code;
+    uint16_t prgi;
+} IOMMUPRIResponse;
+
+struct IOMMUPRINotifier;
+
+typedef void (*IOMMUPRINotify)(struct IOMMUPRINotifier *notifier,
+                               IOMMUPRIResponse *response);
+
+typedef struct IOMMUPRINotifier {
+    IOMMUPRINotify notify;
+} IOMMUPRINotifier;
+
 /* RAM is pre-allocated and passed into qemu_ram_alloc_from_ptr */
 #define RAM_PREALLOC   (1 << 0)
 
@@ -543,6 +564,16 @@ struct IOMMUMemoryRegionClass {
                                              IOMMUTLBEntry *result,
                                              size_t result_length,
                                              uint32_t *err_count);
+
+    /**
+     * @iommu_pri_request_page:
+     * This method must be implemented if the IOMMU has PRI enabled
+     *
+     * @see pci_pri_request_page_pasid
+     */
+    int (*iommu_pri_request_page)(IOMMUMemoryRegion *iommu, hwaddr addr,
+                                  bool lpig, uint16_t prgi, bool is_read,
+                                  bool is_write, bool exec_req, bool priv_req);
 };
 
 typedef struct RamDiscardListener RamDiscardListener;
@@ -844,6 +875,7 @@ struct IOMMUMemoryRegion {
 
     QLIST_HEAD(, IOMMUNotifier) iommu_notify;
     IOMMUNotifierFlag iommu_notify_flags;
+    IOMMUPRINotifier *pri_notifier;
 };
 
 #define IOMMU_NOTIFIER_FOREACH(n, mr) \

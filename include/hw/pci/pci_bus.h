@@ -29,6 +29,7 @@ enum PCIBusFlags {
 };
 
 #define PCI_NO_PASID UINT32_MAX
+#define PCI_PRI_PRGI_MASK 0x1ffU
 
 struct PCIBus {
     BusState qbus;
