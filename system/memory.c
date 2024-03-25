@@ -1969,6 +1969,16 @@ uint64_t memory_region_iommu_get_min_page_size(IOMMUMemoryRegion *iommu_mr)
     return TARGET_PAGE_SIZE;
 }
 
+uint8_t memory_region_iommu_get_addr_width(IOMMUMemoryRegion *iommu_mr)
+{
+    IOMMUMemoryRegionClass *imrc = IOMMU_MEMORY_REGION_GET_CLASS(iommu_mr);
+
+    if (imrc->get_addr_width) {
+        return imrc->get_addr_width(iommu_mr);
+    }
+    return 0;
+}
+
 void memory_region_iommu_replay(IOMMUMemoryRegion *iommu_mr, IOMMUNotifier *n)
 {
     MemoryRegion *mr = MEMORY_REGION(iommu_mr);

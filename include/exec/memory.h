@@ -457,6 +457,14 @@ struct IOMMUMemoryRegionClass {
      */
     uint64_t (*get_min_page_size)(IOMMUMemoryRegion *iommu);
     /**
+     * @get_addr_width:
+     *
+     * Returns width of virtual addresses in bits
+     *
+     * @iommu: the IOMMUMemoryRegion
+     */
+    uint8_t (*get_addr_width)(IOMMUMemoryRegion *iommu);
+    /**
      * @notify_flag_changed:
      *
      * Called when IOMMU Notifier flag changes (ie when the set of
@@ -1849,6 +1857,17 @@ static inline IOMMUMemoryRegionClass *memory_region_get_iommu_class_nocheck(
  * @iommu_mr: the memory region being queried
  */
 uint64_t memory_region_iommu_get_min_page_size(IOMMUMemoryRegion *iommu_mr);
+
+/**
+ * memory_region_iommu_get_addr_width: get virtual address width in bits
+ * for an iommu
+ *
+ * Returns the virtual address width or 0 if the iommu does not
+ * implement this feature
+ *
+ * @iommu_mr: the memory region being queried
+ */
+uint8_t memory_region_iommu_get_addr_width(IOMMUMemoryRegion *iommu_mr);
 
 /**
  * memory_region_notify_iommu: notify a change in an IOMMU translation entry.
