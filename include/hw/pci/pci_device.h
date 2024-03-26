@@ -236,6 +236,21 @@ static inline MemTxResult pci_dma_rw(PCIDevice *dev, dma_addr_t addr,
 }
 
 /**
+ * Same as pci_dma_rw but in an address space identified by a pasid
+ */
+static inline MemTxResult pci_dma_rw_pasid(PCIDevice *dev, uint32_t pasid,
+                                           dma_addr_t addr, void *buf,
+                                           dma_addr_t len, DMADirection dir,
+                                           MemTxAttrs attrs)
+{
+    AddressSpace *as = pci_device_iommu_address_space_pasid(dev, pasid);
+    if (!as) {
+        return MEMTX_ERROR;
+    }
+    return dma_memory_rw(as, addr, buf, len, dir, attrs);
+}
+
+/**
  * pci_dma_read: Read from an address space from PCI device.
  *
  * Return a MemTxResult indicating whether the operation succeeded
@@ -255,6 +270,17 @@ static inline MemTxResult pci_dma_read(PCIDevice *dev, dma_addr_t addr,
 }
 
 /**
+ * Same as pci_dma_read but reads from an address space identified by a pasid
+ */
+static inline MemTxResult pci_dma_read_pasid(PCIDevice *dev, uint32_t pasid,
+                                             dma_addr_t addr, void *buf,
+                                             dma_addr_t len)
+{
+    return pci_dma_rw_pasid(dev, pasid, addr, buf, len,
+                            DMA_DIRECTION_TO_DEVICE, MEMTXATTRS_UNSPECIFIED);
+}
+
+/**
  * pci_dma_write: Write to address space from PCI device.
  *
  * Return a MemTxResult indicating whether the operation succeeded
@@ -271,6 +297,17 @@ static inline MemTxResult pci_dma_write(PCIDevice *dev, dma_addr_t addr,
 {
     return pci_dma_rw(dev, addr, (void *) buf, len,
                       DMA_DIRECTION_FROM_DEVICE, MEMTXATTRS_UNSPECIFIED);
+}
+
+/**
+ * Same as pci_dma_write but writes to an address space identified by a pasid
+ */
+static inline MemTxResult pci_dma_write_pasid(PCIDevice *dev, uint32_t pasid,
+                                              dma_addr_t addr, const void *buf,
+                                              dma_addr_t len)
+{
+    return pci_dma_rw_pasid(dev, pasid, addr, (void *) buf, len,
+                            DMA_DIRECTION_FROM_DEVICE, MEMTXATTRS_UNSPECIFIED);
 }
 
 #define PCI_DMA_DEFINE_LDST(_l, _s, _bits) \
