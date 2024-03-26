@@ -281,6 +281,18 @@ static inline MemTxResult pci_dma_read_pasid(PCIDevice *dev, uint32_t pasid,
 }
 
 /**
+ * Same as pci_dma_read but considers that the address is already translated
+ */
+static inline MemTxResult pci_dma_read_translated(PCIDevice *dev,
+                                                  dma_addr_t addr,
+                                                  void *buf, dma_addr_t len)
+{
+    return pci_dma_rw(dev, addr, buf, len,
+                      DMA_DIRECTION_TO_DEVICE,
+                      MEMTXATTRS_AT(PCI_AT_TRANSLATED));
+}
+
+/**
  * pci_dma_write: Write to address space from PCI device.
  *
  * Return a MemTxResult indicating whether the operation succeeded
@@ -308,6 +320,19 @@ static inline MemTxResult pci_dma_write_pasid(PCIDevice *dev, uint32_t pasid,
 {
     return pci_dma_rw_pasid(dev, pasid, addr, (void *) buf, len,
                             DMA_DIRECTION_FROM_DEVICE, MEMTXATTRS_UNSPECIFIED);
+}
+
+/**
+ * Same as pci_dma_write but considers that the address is already translated
+ */
+static inline MemTxResult pci_dma_write_translated(PCIDevice *dev,
+                                                   dma_addr_t addr,
+                                                   const void *buf,
+                                                   dma_addr_t len)
+{
+    return pci_dma_rw(dev, addr, (void *) buf, len,
+                      DMA_DIRECTION_FROM_DEVICE,
+                      MEMTXATTRS_AT(PCI_AT_TRANSLATED));
 }
 
 #define PCI_DMA_DEFINE_LDST(_l, _s, _bits) \
