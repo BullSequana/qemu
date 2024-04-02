@@ -1910,6 +1910,16 @@ int memory_region_register_iommu_notifier(MemoryRegion *mr,
                                           IOMMUNotifier *n, Error **errp);
 
 /**
+ * Notify the device attached to a memory region by calling the PRI
+ * callback (if exists)
+ *
+ * @iommu_mr: the region in which the PRI request has been performed
+ * @response: the response to be forwarded to the device
+ */
+void memory_region_notify_pri_iommu(IOMMUMemoryRegion *iommu_mr,
+                                    IOMMUPRIResponse *response);
+
+/**
  * memory_region_iommu_replay: replay existing IOMMU translations to
  * a notifier with the minimum page granularity returned by
  * mr->iommu_ops->get_page_size().
@@ -1940,6 +1950,31 @@ ssize_t memory_region_iommu_ats_request_translation(IOMMUMemoryRegion *iommu_mr,
                                                 size_t result_length,
                                                 uint32_t *err_count);
 
+/**
+ * Register a PRI callback in an IOMMU memory region
+ *
+ * Return 0 if the notifier has been installed,
+ * error code otherwise.
+ * An error occurs when the region already has a
+ * callback configured.
+ *
+ * @mr: the target iommu memory region
+ * @n: the notifier to be installed
+ */
+int memory_region_register_iommu_pri_notifier(MemoryRegion *mr,
+                                              IOMMUPRINotifier *n);
+
+/**
+ * Unregister a PRI callback from an IOMMU memory region
+ *
+ * @mr: the target iommu memory region
+ */
+void memory_region_unregister_iommu_pri_notifier(MemoryRegion *mr);
+
+int memory_region_iommu_pri_request_page(IOMMUMemoryRegion *iommu_mr,
+                                         bool priv_req, bool exec_req,
+                                         hwaddr addr, bool lpig, uint16_t prgi,
+                                         bool is_read, bool is_write);
 /**
  * memory_region_iommu_get_attr: return an IOMMU attr if get_attr() is
  * defined on the IOMMU.

@@ -462,6 +462,51 @@ bool pci_iommu_init_iotlb_notifier(PCIDevice *dev, uint32_t pasid,
                                    void *opaque);
 
 /**
+ * Perform a PRI request
+ *
+ * This function is intended to be used by PCIe devices using SVM
+ *
+ * Return 0 if the PRI request has been sent to the guest OS,
+ * an error code otherwise
+ *
+ * @dev: the PRI capable PCI device
+ * @pasid: the pasid of the address space in which the translation will be made
+ * @priv_req: privileged mode bit (PASID TLP)
+ * @exec_req: execute request bit (PASID TLP)
+ * @addr: untranslated address of the requested page
+ * @lpig: last page in group
+ * @prgi: page request group index
+ * @is_read: request read access
+ * @is_write: request write access
+ */
+int pci_pri_request_page_pasid(PCIDevice *dev, uint32_t pasid, bool priv_req,
+                               bool exec_req, hwaddr addr, bool lpig,
+                               uint16_t prgi, bool is_read, bool is_write);
+
+/**
+ * Register a PRI callback for a given address space
+ *
+ * Return 0 on success, an error code otherwise
+ *
+ * @dev: the PRI-capable PCI device
+ * @pasid: the pasid of the address space to install the callback in
+ * @notifier: the notifier to register
+ */
+int pci_pri_register_notifier(PCIDevice *dev, uint32_t pasid,
+                              IOMMUPRINotifier *notifier);
+
+/**
+ * Unregister a PRI callback from a given address space identified
+ * by a pasid.
+ *
+ * Return 0 if the callback has been unregistered, an error code otherwise
+ *
+ * @dev: the PRI-capable PCI device
+ * @pasid: the pasid of the address space to remove the callback from
+ */
+int pci_pri_unregister_notifier(PCIDevice *dev, uint32_t pasid);
+
+/**
  * pci_ats_request_translation_pasid: perform an ATS request
  *
  * Return the number of translations stored in @result in case of success,

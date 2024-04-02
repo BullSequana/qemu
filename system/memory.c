@@ -1797,6 +1797,7 @@ void memory_region_init_iommu(void *_iommu_mr,
     mr->terminates = true;  /* then re-forwards */
     QLIST_INIT(&iommu_mr->iommu_notify);
     iommu_mr->iommu_notify_flags = IOMMU_NOTIFIER_NONE;
+    iommu_mr->pri_notifier = NULL;
 }
 
 static void memory_region_finalize(Object *obj)
@@ -2032,6 +2033,49 @@ ssize_t memory_region_iommu_ats_request_translation(IOMMUMemoryRegion *iommu_mr,
                                                result_length, err_count);
 }
 
+int memory_region_register_iommu_pri_notifier(MemoryRegion *mr,
+                                               IOMMUPRINotifier *n)
+{
+    IOMMUMemoryRegion *iommu_mr;
+
+    if (mr->alias) {
+        return memory_region_register_iommu_pri_notifier(mr->alias, n);
+    }
+    iommu_mr = IOMMU_MEMORY_REGION(mr);
+    if (iommu_mr->pri_notifier) {
+        return -EBUSY;
+    }
+    iommu_mr->pri_notifier = n;
+    return 0;
+}
+
+void memory_region_unregister_iommu_pri_notifier(MemoryRegion *mr)
+{
+    IOMMUMemoryRegion *iommu_mr;
+
+    if (mr->alias) {
+        memory_region_unregister_iommu_pri_notifier(mr->alias);
+        return;
+    }
+    iommu_mr = IOMMU_MEMORY_REGION(mr);
+    iommu_mr->pri_notifier = NULL;
+}
+
+int memory_region_iommu_pri_request_page(IOMMUMemoryRegion *iommu_mr,
+                                         bool priv_req, bool exec_req,
+                                         hwaddr addr, bool lpig, uint16_t prgi,
+                                         bool is_read, bool is_write)
+{
+    IOMMUMemoryRegionClass *imrc =
+        memory_region_get_iommu_class_nocheck(iommu_mr);
+
+    if (!imrc->iommu_pri_request_page) {
+        return -ENODEV;
+    }
+    return imrc->iommu_pri_request_page(iommu_mr, addr, lpig, prgi, is_read,
+                                        is_write, exec_req, priv_req);
+}
+
 void memory_region_notify_iommu_one(IOMMUNotifier *notifier,
                                     const IOMMUTLBEvent *event)
 {
@@ -2089,6 +2133,15 @@ void memory_region_notify_iommu(IOMMUMemoryRegion *iommu_mr,
         if (iommu_notifier->iommu_idx == iommu_idx) {
             memory_region_notify_iommu_one(iommu_notifier, &event);
         }
+    }
+}
+
+void memory_region_notify_pri_iommu(IOMMUMemoryRegion *iommu_mr,
+                                    IOMMUPRIResponse *response)
+{
+    assert(memory_region_is_iommu(MEMORY_REGION(iommu_mr)));
+    if (iommu_mr->pri_notifier) {
+        iommu_mr->pri_notifier->notify(iommu_mr->pri_notifier, response);
     }
 }
 
