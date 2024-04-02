@@ -2896,6 +2896,43 @@ void pci_device_unset_iommu_device(PCIDevice *dev)
     }
 }
 
+int pci_pri_request_page_pasid(PCIDevice *dev, uint32_t pasid, bool priv_req,
+                               bool exec_req, hwaddr addr, bool lpig,
+                               uint16_t prgi, bool is_read, bool is_write)
+{
+    IOMMUMemoryRegion *iommu_mr = pci_device_iommu_memory_region_pasid(dev,
+                                                                        pasid);
+    if (!iommu_mr || !pcie_pri_enabled(dev)) {
+        return -EPERM;
+    }
+    return memory_region_iommu_pri_request_page(iommu_mr, priv_req, exec_req,
+                                                addr, lpig, prgi, is_read,
+                                                is_write);
+}
+
+int pci_pri_register_notifier(PCIDevice *dev, uint32_t pasid,
+                              IOMMUPRINotifier *notifier)
+{
+    IOMMUMemoryRegion *iommu_mr = pci_device_iommu_memory_region_pasid(dev,
+                                                                        pasid);
+    if (!iommu_mr || !pcie_pri_enabled(dev)) {
+        return -EPERM;
+    }
+    return memory_region_register_iommu_pri_notifier(MEMORY_REGION(iommu_mr),
+                                                     notifier);
+}
+
+int pci_pri_unregister_notifier(PCIDevice *dev, uint32_t pasid)
+{
+    IOMMUMemoryRegion *iommu_mr = pci_device_iommu_memory_region_pasid(dev,
+                                                                        pasid);
+    if (!iommu_mr || !pcie_pri_enabled(dev)) {
+        return -EPERM;
+    }
+    memory_region_unregister_iommu_pri_notifier(MEMORY_REGION(iommu_mr));
+    return 0;
+}
+
 ssize_t pci_ats_request_translation_pasid(PCIDevice *dev, uint32_t pasid,
                                           bool priv_req, bool exec_req,
                                           hwaddr addr, size_t length,
