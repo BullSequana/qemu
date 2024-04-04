@@ -493,6 +493,23 @@ bool pci_iommu_init_iotlb_notifier(PCIDevice *dev, uint32_t pasid,
                                    void *opaque);
 
 /**
+ * pci_iommu_get_addr_width: get the iommu's virtual address width in bits
+ *
+ * Return the width of virtual addresses or 0 if the iommu does
+ * not provide this information
+ *
+ * @dev: the device that is connected to the iommu
+ */
+uint8_t pci_iommu_get_addr_width(PCIDevice *dev);
+
+/**
+ * pci_iommu_get_addr_width: get minimum supported page size of an iommu
+ *
+ * @dev: the device that is connected to the iommu
+ */
+uint64_t pci_iommu_get_min_page_size(PCIDevice *dev);
+
+/**
  * Perform a PRI request
  *
  * This function is intended to be used by PCIe devices using SVM
