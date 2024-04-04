@@ -758,4 +758,13 @@ typedef struct VTDHostIOMMUDevice {
 #define VTD_PR_PECTL_IP         0X40000000UL /* PR control interrup pending */
 #define VTD_PR_PECTL_IM         0X80000000UL /* PR control interrup mask */
 
+/* IOMMU Index */
+typedef enum VTDIOMMUIndex {
+    VTD_IDX_UNTRANSLATED = 0, /* Default */
+    VTD_IDX_TRANSLATED = 1,
+    VTD_IDX_COUNT = 2, /* Number of supported indexes */
+} VTDIOMMUIndex;
+
+#define VTD_IDX_IS_TRANSLATED(idx) ((idx) == VTD_IDX_TRANSLATED)
+
 #endif
