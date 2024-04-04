@@ -2915,6 +2915,20 @@ void pci_device_unset_iommu_device(PCIDevice *dev)
     }
 }
 
+uint8_t pci_iommu_get_addr_width(PCIDevice *dev)
+{
+    IOMMUMemoryRegion *iommu_mr = pci_device_iommu_memory_region_pasid(dev,
+                                                                PCI_NO_PASID);
+    return memory_region_iommu_get_addr_width(iommu_mr);
+}
+
+uint64_t pci_iommu_get_min_page_size(PCIDevice *dev)
+{
+    IOMMUMemoryRegion *iommu_mr = pci_device_iommu_memory_region_pasid(dev,
+                                                                PCI_NO_PASID);
+    return memory_region_iommu_get_min_page_size(iommu_mr);
+}
+
 int pci_pri_request_page_pasid(PCIDevice *dev, uint32_t pasid, bool priv_req,
                                bool exec_req, hwaddr addr, bool lpig,
                                uint16_t prgi, bool is_read, bool is_write)
