@@ -5438,7 +5438,7 @@ static const MemoryRegionOps vtd_mem_ir_fault_ops = {
 };
 
 VTDAddressSpace *vtd_find_add_as(IntelIOMMUState *s, PCIBus *bus,
-                                 int devfn, unsigned int pasid)
+                                 int devfn, uint32_t pasid)
 {
     /*
      * We can't simply use sid here since the bus number might not be
@@ -5995,19 +5995,26 @@ static void vtd_reset(DeviceState *dev)
     vtd_refresh_pasid_bind(s);
 }
 
-static AddressSpace *vtd_host_dma_iommu(PCIBus *bus, void *opaque, int devfn)
+static AddressSpace *vtd_host_dma_iommu_pasid(PCIBus *bus, void *opaque,
+                                              int devfn, uint32_t pasid)
 {
     IntelIOMMUState *s = opaque;
     VTDAddressSpace *vtd_as;
 
     assert(0 <= devfn && devfn < PCI_DEVFN_MAX);
 
-    vtd_as = vtd_find_add_as(s, bus, devfn, PCI_NO_PASID);
+    vtd_as = vtd_find_add_as(s, bus, devfn, pasid);
     return &vtd_as->as;
+}
+
+static AddressSpace *vtd_host_dma_iommu(PCIBus *bus, void *opaque, int devfn)
+{
+    return vtd_host_dma_iommu_pasid(bus, opaque, devfn, PCI_NO_PASID);
 }
 
 static PCIIOMMUOps vtd_iommu_ops = {
     .get_address_space = vtd_host_dma_iommu,
+    .get_address_space_pasid = vtd_host_dma_iommu_pasid,
     .set_iommu_device = vtd_dev_set_iommu_device,
     .unset_iommu_device = vtd_dev_unset_iommu_device,
 };
