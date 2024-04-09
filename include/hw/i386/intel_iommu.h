@@ -267,6 +267,7 @@ struct IntelIOMMUState {
     char *scalable_mode_str;        /* RO - admin's Scalable Mode config */
     bool scalable_modern;           /* RO - is modern SM supported? */
     bool snoop_control;             /* RO - is SNP filed supported? */
+    bool svm;                       /* RO - is SVA/SVM supported? */
 
     dma_addr_t root;                /* Current root table pointer */
     bool root_scalable;             /* Type of root table (scalable or not) */

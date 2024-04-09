@@ -3493,7 +3493,7 @@ static bool vtd_get_inv_desc(IntelIOMMUState *s,
 static bool vtd_process_wait_desc(IntelIOMMUState *s, VTDInvDesc *inv_desc)
 {
     if ((inv_desc->hi & VTD_INV_DESC_WAIT_RSVD_HI) ||
-        (inv_desc->lo & VTD_INV_DESC_WAIT_RSVD_LO)) {
+        (inv_desc->lo & VTD_INV_DESC_WAIT_RSVD_LO(s->ecap))) {
         error_report_once("%s: invalid wait desc: hi=%"PRIx64", lo=%"PRIx64
                           " (reserved nonzero)", __func__, inv_desc->hi,
                           inv_desc->lo);
@@ -5258,6 +5258,7 @@ static Property vtd_properties[] = {
     DEFINE_PROP_STRING("x-scalable-mode", IntelIOMMUState, scalable_mode_str),
     DEFINE_PROP_BOOL("snoop-control", IntelIOMMUState, snoop_control, false),
     DEFINE_PROP_BOOL("x-pasid-mode", IntelIOMMUState, pasid, false),
+    DEFINE_PROP_BOOL("svm", IntelIOMMUState, svm, false),
     DEFINE_PROP_BOOL("dma-drain", IntelIOMMUState, dma_drain, true),
     DEFINE_PROP_BOOL("dma-translation", IntelIOMMUState, dma_translation, true),
     DEFINE_PROP_BOOL("x-cap-fs1gp", IntelIOMMUState, fs1gp, true),
@@ -6092,6 +6093,10 @@ static void vtd_init(IntelIOMMUState *s)
         vtd_spte_rsvd_large[3] &= ~VTD_SPTE_SNP;
     }
 
+    if (s->svm) {
+        s->ecap |= VTD_ECAP_PRS | VTD_ECAP_PDS | VTD_ECAP_NWFS;
+    }
+
     vtd_reset_caches(s);
 
     /* Define registers with default values and bit semantics */
@@ -6541,6 +6546,26 @@ static bool vtd_decide_config(IntelIOMMUState *s, Error **errp)
         return false;
     }
 
+    if (s->svm && !x86_iommu->dt_supported) {
+        error_setg(errp, "Need to set device IOTLB for svm");
+        return false;
+    }
+
+    if (s->svm && !s->scalable_modern) {
+        error_setg(errp, "Need to set modern scalable mode for svm");
+        return false;
+    }
+
+    if (s->svm && !s->dma_translation) {
+        error_setg(errp, "Need to set dma-translation for svm");
+        return false;
+    }
+
+    if (s->svm && !s->pasid) {
+        error_setg(errp, "Need to set PASID support for svm");
+        return false;
+    }
+
     return true;
 }
 
@@ -6577,17 +6602,6 @@ static void vtd_realize(DeviceState *dev, Error **errp)
     X86MachineState *x86ms = X86_MACHINE(ms);
     PCIBus *bus = pcms->pcibus;
     IntelIOMMUState *s = INTEL_IOMMU_DEVICE(dev);
-    X86IOMMUState *x86_iommu = X86_IOMMU_DEVICE(s);
-
-    if (s->pasid && x86_iommu->dt_supported) {
-        /*
-         * PASID-based-Device-TLB Invalidate Descriptor is not
-         * implemented and it requires support from vhost layer which
-         * needs to be implemented in the future.
-         */
-        error_setg(errp, "PASID based device IOTLB is not supported");
-        return;
-    }
 
     if (!vtd_decide_config(s, errp)) {
         return;
