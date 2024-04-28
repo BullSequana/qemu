@@ -25,6 +25,7 @@
 #include "qemu/cutils.h"
 #include "qemu/chardev_open.h"
 #include "pci.h"
+#include "hw/i386/intel_iommu_internal.h"
 
 static int iommufd_cdev_map(const VFIOContainerBase *bcontainer, hwaddr iova,
                             ram_addr_t size, void *vaddr, bool readonly)
@@ -665,6 +666,15 @@ static bool hiod_iommufd_vfio_realize(HostIOMMUDevice *hiod, void *opaque,
     idev->devid = vdev->devid;
     idev->ioas_id = container->ioas_id;
     HOST_IOMMU_DEVICE_IOMMUFD_VFIO(hiod)->vdev = vdev;
+
+    switch (type) {
+    case IOMMU_HW_INFO_TYPE_INTEL_VTD:
+        caps->nesting = !!(data.vtd.ecap_reg & VTD_ECAP_NEST);
+        caps->fs1gp = !!(data.vtd.cap_reg & VTD_CAP_FS1GP);
+        break;
+    case IOMMU_HW_INFO_TYPE_NONE:
+        break;
+    }
 
     return true;
 }
