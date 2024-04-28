@@ -21,10 +21,16 @@
  * @type: host platform IOMMU type.
  *
  * @aw_bits: host IOMMU address width. 0xff if no limitation.
+ *
+ * @nesting: nesting page table support.
+ *
+ * @fs1gp: first stage(a.k.a, Stage-1) 1GB huge page support.
  */
 typedef struct HostIOMMUDeviceCaps {
     uint32_t type;
     uint8_t aw_bits;
+    bool nesting;
+    bool fs1gp;
 } HostIOMMUDeviceCaps;
 
 #define TYPE_HOST_IOMMU_DEVICE "host-iommu-device"
@@ -86,6 +92,8 @@ struct HostIOMMUDeviceClass {
  */
 #define HOST_IOMMU_DEVICE_CAP_IOMMU_TYPE        0
 #define HOST_IOMMU_DEVICE_CAP_AW_BITS           1
+#define HOST_IOMMU_DEVICE_CAP_NESTING           2
+#define HOST_IOMMU_DEVICE_CAP_FS1GP             3
 
 #define HOST_IOMMU_DEVICE_CAP_AW_BITS_MAX       64
 #endif
