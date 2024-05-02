@@ -3500,6 +3500,11 @@ static bool vtd_process_wait_desc(IntelIOMMUState *s, VTDInvDesc *inv_desc)
     } else if (inv_desc->lo & VTD_INV_DESC_WAIT_IF) {
         /* Interrupt flag */
         vtd_generate_completion_event(s);
+    } else if (inv_desc->lo & VTD_INV_DESC_WAIT_FN) {
+        /*
+         * SW = 0, IF = 0, FN = 1
+         * Nothing to do as we process the events sequentially
+         */
     } else {
         error_report_once("%s: invalid wait desc: hi=%"PRIx64", lo=%"PRIx64
                           " (unknown type)", __func__, inv_desc->hi,
