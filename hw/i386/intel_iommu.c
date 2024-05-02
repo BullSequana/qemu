@@ -2210,6 +2210,9 @@ static bool vtd_do_iommu_translate(VTDAddressSpace *vtd_as, PCIBus *bus,
 
     vtd_iommu_lock(s);
 
+    /* fill the pasid before getting rid2pasid */
+    entry->pasid = pasid;
+
     cc_entry = &vtd_as->context_cache_entry;
 
     /* Try to fetch pte form IOTLB, we don't need RID2PASID logic */
@@ -2328,6 +2331,7 @@ out:
     entry->translated_addr = vtd_get_pte_addr(pte, s->aw_bits) & page_mask;
     entry->addr_mask = ~page_mask;
     entry->perm = access_flags;
+    /* pasid already set */
     return true;
 
 error:
@@ -2336,6 +2340,7 @@ error:
     entry->translated_addr = 0;
     entry->addr_mask = 0;
     entry->perm = IOMMU_NONE;
+    entry->pasid = PCI_NO_PASID;
     return false;
 }
 
@@ -3697,6 +3702,7 @@ static void vtd_piotlb_page_invalidate(IntelIOMMUState *s, uint16_t domain_id,
             event.entry.target_as = &address_space_memory;
             event.entry.iova = addr;
             event.entry.perm = IOMMU_NONE;
+            event.entry.pasid = pasid;
             event.entry.addr_mask = size - 1;
             event.entry.translated_addr = 0;
             memory_region_notify_iommu(&vtd_as->iommu, 0, event);
@@ -4344,6 +4350,7 @@ static void do_invalidate_device_tlb(VTDAddressSpace *vtd_dev_as,
     event.entry.iova = addr;
     event.entry.perm = IOMMU_NONE;
     event.entry.translated_addr = 0;
+    event.entry.pasid = vtd_dev_as->pasid;
     memory_region_notify_iommu(&vtd_dev_as->iommu, 0, event);
 }
 
@@ -4920,6 +4927,7 @@ static IOMMUTLBEntry vtd_iommu_translate(IOMMUMemoryRegion *iommu, hwaddr addr,
     IOMMUTLBEntry iotlb = {
         /* We'll fill in the rest later. */
         .target_as = &address_space_memory,
+        .pasid = vtd_as->pasid,
     };
     bool success;
 
@@ -4932,6 +4940,7 @@ static IOMMUTLBEntry vtd_iommu_translate(IOMMUMemoryRegion *iommu, hwaddr addr,
         iotlb.translated_addr = addr & VTD_PAGE_MASK_4K;
         iotlb.addr_mask = ~VTD_PAGE_MASK_4K;
         iotlb.perm = IOMMU_RW;
+        iotlb.pasid = PCI_NO_PASID;
         success = true;
     }
 
