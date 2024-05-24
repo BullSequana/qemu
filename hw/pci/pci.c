@@ -2981,6 +2981,9 @@ ssize_t pci_ats_request_translation_pasid(PCIDevice *dev, uint32_t pasid,
     if (!iommu_mr || !pcie_ats_enabled(dev)) {
         return -EPERM;
     }
+    if (priv_req && !pcie_pasid_priv_enabled(dev)) {
+        return -EPERM;
+    }
     return memory_region_iommu_ats_request_translation(iommu_mr, priv_req,
                                                        exec_req, addr, length,
                                                        no_write, result,
