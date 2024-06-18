@@ -1957,6 +1957,7 @@ static const bool vtd_qualified_faults[] = {
     [VTD_FR_SM_INTERRUPT_ADDR] = true,
     [VTD_FR_SM_PRE_ABS] = true,
     [VTD_FR_FS_NON_CANONICAL] = true,
+    [VTD_FR_FS_PRIV_VIOLATION] = true,
     [VTD_FR_FS_BIT_UPDATE_FAILED] = true,
     [VTD_FR_MAX] = false,
 };
@@ -2098,10 +2099,10 @@ static MemTxResult vtd_set_flag_in_pte(dma_addr_t base_addr, uint32_t index,
  * of the translation, can be used for deciding the size of large page.
  */
 static int vtd_iova_to_flpte(IntelIOMMUState *s, VTDContextEntry *ce,
-                             uint64_t iova, bool is_write,
+                             uint64_t iova, bool is_write, bool is_priv,
                              uint64_t *flptep, uint32_t *flpte_level,
-                             bool *reads, bool *writes, uint8_t aw_bits,
-                             uint32_t pasid, int iommu_idx)
+                             bool *reads, bool *writes, bool *supervisor,
+                             uint8_t aw_bits, uint32_t pasid, int iommu_idx)
 {
     dma_addr_t addr = vtd_get_iova_pgtbl_base(s, ce, pasid);
     uint32_t offset;
@@ -2133,6 +2134,10 @@ static int vtd_iova_to_flpte(IntelIOMMUState *s, VTDContextEntry *ce,
         }
         *reads = true;
         *writes = (*writes) && (flpte & VTD_FL_RW_MASK);
+        *supervisor = (*supervisor) || !(flpte & VTD_FL_US_MASK);
+        if (!is_priv && *supervisor) {
+            return -VTD_FR_FS_PRIV_VIOLATION;
+        }
         /* ATS translation should not fail when the W permission is not set */
         if (is_write && !VTD_IDX_IS_ATS(iommu_idx) &&
                                                     !(flpte & VTD_FL_RW_MASK)) {
@@ -2195,7 +2200,8 @@ static void vtd_report_fault(IntelIOMMUState *s,
  */
 static bool vtd_do_iommu_translate(VTDAddressSpace *vtd_as, PCIBus *bus,
                                    uint8_t devfn, hwaddr addr, bool is_write,
-                                   IOMMUTLBEntry *entry, int iommu_idx)
+                                   bool is_priv, IOMMUTLBEntry *entry,
+                                   int iommu_idx)
 {
     IntelIOMMUState *s = vtd_as->iommu_state;
     VTDContextEntry ce;
@@ -2209,6 +2215,7 @@ static bool vtd_do_iommu_translate(VTDAddressSpace *vtd_as, PCIBus *bus,
     bool is_fpd_set = false;
     bool reads = true;
     bool writes = true;
+    bool supervisor = false;
     uint8_t access_flags, pgtt;
     bool rid2pasid = (pasid == PCI_NO_PASID) && s->root_scalable;
     VTDIOTLBEntry *iotlb_entry;
@@ -2318,9 +2325,9 @@ static bool vtd_do_iommu_translate(VTDAddressSpace *vtd_as, PCIBus *bus,
     }
 
     if (s->scalable_modern && s->root_scalable) {
-        ret_fr = vtd_iova_to_flpte(s, &ce, addr, is_write, &pte, &level,
-                                   &reads, &writes, s->aw_bits, pasid,
-                                   iommu_idx);
+        ret_fr = vtd_iova_to_flpte(s, &ce, addr, is_write, is_priv, &pte,
+                                   &level, &reads, &writes, &supervisor,
+                                   s->aw_bits, pasid, iommu_idx);
         pgtt = VTD_SM_PASID_ENTRY_FLT;
     } else {
         ret_fr = vtd_iova_to_slpte(s, &ce, addr, is_write, &pte, &level,
@@ -2334,7 +2341,8 @@ static bool vtd_do_iommu_translate(VTDAddressSpace *vtd_as, PCIBus *bus,
     }
 
     page_mask = vtd_pt_level_page_mask(level);
-    access_flags = IOMMU_ACCESS_FLAG(reads, writes);
+    access_flags = IOMMU_ACCESS_FLAG_FULL(reads, writes, false, supervisor,
+                                          false, false);
     vtd_update_iotlb(s, source_id, vtd_get_domain_id(s, &ce, pasid),
                      addr, pte, access_flags, level, pasid, pgtt);
 out:
@@ -2356,7 +2364,8 @@ error:
      */
     entry->addr_mask = (level != UINT32_MAX) ?
                        (~vtd_pt_level_page_mask(level)) : (~VTD_PAGE_MASK_4K);
-    entry->perm = IOMMU_NONE;
+    entry->perm = IOMMU_ACCESS_FLAG_FULL(false, false, false, is_priv,
+                                         false, false);
     entry->pasid = PCI_NO_PASID;
     return false;
 }
@@ -5110,6 +5119,7 @@ static IOMMUTLBEntry vtd_iommu_translate(IOMMUMemoryRegion *iommu, hwaddr addr,
     };
     bool success;
     bool is_write = flag & IOMMU_WO;
+    bool is_priv = flag & IOMMU_PRIV;
 
     if (likely(s->dmar_enabled)) {
         if (translated && s->root_scalable) {
@@ -5118,7 +5128,8 @@ static IOMMUTLBEntry vtd_iommu_translate(IOMMUMemoryRegion *iommu, hwaddr addr,
                                                      addr, is_write);
         } else {
             success = vtd_do_iommu_translate(vtd_as, vtd_as->bus, vtd_as->devfn,
-                                            addr, is_write, &iotlb, iommu_idx);
+                                            addr, is_write, is_priv, &iotlb,
+                                            iommu_idx);
         }
     } else {
         /* DMAR disabled, passthrough, use 4k-page*/
@@ -6210,20 +6221,40 @@ static IOMMUMemoryRegion *vtd_get_memory_region_pasid(PCIBus *bus,
     return &vtd_as->iommu;
 }
 
+static inline void vtd_iommu_ats_prepapre_error_entry(IOMMUTLBEntry *entry)
+{
+    entry->iova = 0;
+    entry->translated_addr = 0;
+    entry->addr_mask = ~VTD_PAGE_MASK_4K;
+    entry->perm = IOMMU_NONE;
+    entry->pasid = PCI_NO_PASID;
+}
+
 static IOMMUTLBEntry vtd_iommu_ats_do_translate(IOMMUMemoryRegion *iommu,
                                                 hwaddr addr,
                                                 IOMMUAccessFlags flags)
 {
     IOMMUTLBEntry entry;
     VTDAddressSpace *vtd_as = container_of(iommu, VTDAddressSpace, iommu);
+    IntelIOMMUState *s = vtd_as->iommu_state;
+
+    /* Guard that makes sure we avoid weird behavors */
+    if ((flags & IOMMU_PRIV) && (s->ecap & VTD_ECAP_SRS)) {
+        error_report_once("ATS in privileged mode is not supported yet");
+        abort();
+    }
 
     if (vtd_is_interrupt_addr(addr)) {
+        vtd_iommu_ats_prepapre_error_entry(&entry);
         vtd_report_ir_illegal_access(vtd_as, addr, flags & IOMMU_WO);
-        entry.iova = 0;
-        entry.translated_addr = 0;
-        entry.addr_mask = ~VTD_PAGE_MASK_4K;
-        entry.perm = IOMMU_NONE;
-        entry.pasid = PCI_NO_PASID;
+    } else if ((flags & IOMMU_PRIV) && !(s->ecap & VTD_ECAP_SRS)) {
+        /*
+         * For translation-request-with-PASID with PR=1, remapping hardware
+         * not supporting supervisor requests (SRS=0 in the Extended
+         * Capability Register) forces R=W=E=0 in addition to setting PRIV=1.
+         */
+        vtd_iommu_ats_prepapre_error_entry(&entry);
+        entry.perm = IOMMU_PRIV;
     } else {
         entry = vtd_iommu_translate(iommu, addr, flags, VTD_IDX_ATS);
     }

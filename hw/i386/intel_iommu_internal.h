@@ -333,6 +333,7 @@ typedef enum VTDFaultReason {
     VTD_FR_PASID_TABLE_ENTRY_INV = 0x5b,  /*Invalid PASID table entry */
 
     VTD_FR_FS_NON_CANONICAL = 0x80, /* SNG.1 : Address for FS not canonical.*/
+    VTD_FR_FS_PRIV_VIOLATION = 0x81, /* SGN.2 : Privilege violation.*/
 
     /* Output address in the interrupt address range for scalable mode */
     VTD_FR_SM_INTERRUPT_ADDR = 0x87,
@@ -701,6 +702,7 @@ typedef struct VTDPIOTLBInvInfo {
 /* Masks for First Level Paging Entry */
 #define VTD_FL_P                    1ULL
 #define VTD_FL_RW_MASK              (1ULL << 1)
+#define VTD_FL_US_MASK              (1ULL << 2)
 #define VTD_FL_A                    0x20
 #define VTD_FL_D                    0x40
 
