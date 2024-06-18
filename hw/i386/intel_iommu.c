@@ -2192,7 +2192,8 @@ static bool vtd_do_iommu_translate(VTDAddressSpace *vtd_as, PCIBus *bus,
     uint8_t bus_num = pci_bus_num(bus);
     VTDContextCacheEntry *cc_entry;
     uint64_t pte, page_mask;
-    uint32_t level, pasid = vtd_as->pasid;
+    uint32_t level = UINT32_MAX;
+    uint32_t pasid = vtd_as->pasid;
     uint16_t source_id = PCI_BUILD_BDF(bus_num, devfn);
     int ret_fr;
     bool is_fpd_set = false;
@@ -2338,7 +2339,12 @@ error:
     vtd_iommu_unlock(s);
     entry->iova = 0;
     entry->translated_addr = 0;
-    entry->addr_mask = 0;
+    /*
+     * Set the mask for ATS (the range must be present even when the
+     * translation fails : PCIe rev 5 10.2.3.5)
+     */
+    entry->addr_mask = (level != UINT32_MAX) ?
+                       (~vtd_pt_level_page_mask(level)) : (~VTD_PAGE_MASK_4K);
     entry->perm = IOMMU_NONE;
     entry->pasid = PCI_NO_PASID;
     return false;
