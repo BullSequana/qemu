@@ -191,6 +191,7 @@
 #define VTD_ECAP_EIM                (1ULL << 4)
 #define VTD_ECAP_PT                 (1ULL << 6)
 #define VTD_ECAP_SC                 (1ULL << 7)
+#define VTD_ECAP_PRS                (1ULL << 29)
 #define VTD_ECAP_MHMV               (15ULL << 20)
 #define VTD_ECAP_NEST               (1ULL << 26)
 #define VTD_ECAP_SRS                (1ULL << 31)
@@ -373,6 +374,18 @@ union VTDInvDesc {
 };
 typedef union VTDInvDesc VTDInvDesc;
 
+/* Page Request Descriptor */
+union VTDPRDesc {
+    struct {
+        uint64_t lo;
+        uint64_t hi;
+    };
+    struct {
+        uint64_t val[4];
+    };
+};
+typedef union VTDPRDesc VTDPRDesc;
+
 /* Masks for struct VTDInvDesc */
 #define VTD_INV_DESC_TYPE               0xf
 #define VTD_INV_DESC_CC                 0x1 /* Context-cache Invalidate Desc */
@@ -384,6 +397,7 @@ typedef union VTDInvDesc VTDInvDesc;
 #define VTD_INV_DESC_PIOTLB             0x6 /* PASID-IOTLB Invalidate Desc */
 #define VTD_INV_DESC_PC                 0x7 /* PASID-cache Invalidate Desc */
 #define VTD_INV_DESC_DEV_PIOTLB         0x8 /* PASID-based-DIOTLB inv_desc*/
+#define VTD_INV_DESC_PGRESP             0x9 /* Page Group Response Desc */
 #define VTD_INV_DESC_NONE               0   /* Not an Invalidate Descriptor */
 
 /* Masks for Invalidation Wait Descriptor*/
@@ -425,7 +439,16 @@ typedef union VTDInvDesc VTDInvDesc;
 #define VTD_INV_DESC_DEVICE_IOTLB_SIZE(val) ((val) & 0x1)
 #define VTD_INV_DESC_DEVICE_IOTLB_SID(val) (((val) >> 32) & 0xFFFFULL)
 #define VTD_INV_DESC_DEVICE_IOTLB_RSVD_HI 0xffeULL
-#define VTD_INV_DESC_DEVICE_IOTLB_RSVD_LO 0xffff0000ffe0fff8
+#define VTD_INV_DESC_DEVICE_IOTLB_RSVD_LO 0xffff0000ffe0fff8ULL
+
+/* Mask for Page Group Response Descriptor */
+#define VTD_INV_DESC_PGRESP_RSVD_HI             0xfffffffffffff003ULL
+#define VTD_INV_DESC_PGRESP_RSVD_LO             0xfff0000000000fe0ULL
+#define VTD_INV_DESC_PGRESP_PP(val)             ((val >> 4) & 0x1ULL)
+#define VTD_INV_DESC_PGRESP_RC(val)             ((val >> 12) & 0xfULL)
+#define VTD_INV_DESC_PGRESP_RID(val)            ((val >> 16) & 0xffffULL)
+#define VTD_INV_DESC_PGRESP_PASID(val)          ((val >> 32) & 0xfffffULL)
+#define VTD_INV_DESC_PGRESP_PRGI(val)           ((val >> 3) & 0x1ffULL)
 
 /* Mask for PASID Device IOTLB Invalidate Descriptor */
 #define VTD_INV_DESC_PASID_DEVICE_IOTLB_ADDR(val) ((val) & \
@@ -563,6 +586,7 @@ typedef struct VTDRootEntry VTDRootEntry;
 #define VTD_SM_CONTEXT_ENTRY_RID2PASID_MASK 0xfffff
 #define VTD_SM_CONTEXT_ENTRY_RSVD_VAL0(aw)  (0x1e0ULL | ~VTD_HAW_MASK(aw))
 #define VTD_SM_CONTEXT_ENTRY_RSVD_VAL1      0xffffffffffe00000ULL
+#define VTD_SM_CONTEXT_ENTRY_PRE            0x10ULL
 
 typedef struct VTDPASIDCacheEntry {
     struct VTDPASIDEntry pasid_entry;
@@ -706,4 +730,30 @@ typedef struct VTDHostIOMMUDevice {
     HostIOMMUDevice *hiod;
     uint32_t errata;
 } VTDHostIOMMUDevice;
+
+/* Page Request Descriptor */
+/* For the low 64-bit of 128-bit */
+#define VTD_PRD_TYPE            (1ULL)
+#define VTD_PRD_PP(val)         ((val & 1ULL) << 8)
+#define VTD_PRD_RID(val)        ((val & 0xffffULL) << 16)
+#define VTD_PRD_PASID(val)      ((val & 0xfffffULL) << 32)
+#define VTD_PRD_EXR(val)        ((val & 1ULL) << 52)
+#define VTD_PRD_PMR(val)        ((val & 1ULL) << 53)
+/* For the high 64-bit of 128-bit */
+#define VTD_PRD_RDR(val)        (val & 1ULL)
+#define VTD_PRD_WRR(val)        ((val & 1ULL) << 1)
+#define VTD_PRD_LPIG(val)       ((val & 1ULL) << 2)
+#define VTD_PRD_PRGI(val)       ((val & 0x1ffULL) << 3)
+#define VTD_PRD_ADDR(val)       (val & 0xfffffffffffff000ULL)
+
+/* Page Request Queue constants */
+#define VTD_PQA_ENTRY_SIZE      32 /* Size of an entry in bytes */
+/* Page Request Queue masks */
+#define VTD_PQA_ADDR            0xfffffffffffff000ULL /* PR queue address */
+#define VTD_PQA_SIZE            0x7ULL /* PR queue size */
+#define VTD_PR_STATUS_PPR       1UL /* Pending page request */
+#define VTD_PR_STATUS_PRO       2UL /* Page request overflow */
+#define VTD_PR_PECTL_IP         0X40000000UL /* PR control interrup pending */
+#define VTD_PR_PECTL_IM         0X80000000UL /* PR control interrup mask */
+
 #endif
