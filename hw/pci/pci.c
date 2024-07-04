@@ -2825,6 +2825,25 @@ AddressSpace *pci_device_iommu_address_space(PCIDevice *dev)
     return &address_space_memory;
 }
 
+AddressSpace *pci_device_iommu_address_space_pasid(PCIDevice *dev,
+                                                   uint32_t pasid)
+{
+    PCIBus *bus;
+    PCIBus *iommu_bus;
+    int devfn;
+
+    if (!dev->is_master || !pcie_pasid_enabled(dev) || pasid == PCI_NO_PASID) {
+        return NULL;
+    }
+
+    pci_device_get_iommu_bus_devfn(dev, &bus, &iommu_bus, &devfn);
+    if (iommu_bus && iommu_bus->iommu_ops->get_address_space_pasid) {
+        return iommu_bus->iommu_ops->get_address_space_pasid(bus,
+                                    iommu_bus->iommu_opaque, devfn, pasid);
+    }
+    return NULL;
+}
+
 static IOMMUMemoryRegion *pci_device_iommu_memory_region_pasid(PCIDevice *dev,
                                                                uint32_t pasid)
 {
