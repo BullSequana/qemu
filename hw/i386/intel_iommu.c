@@ -5296,6 +5296,16 @@ static const TypeInfo vtd_info = {
     .class_init    = vtd_class_init,
 };
 
+static int vtd_attrs_to_index(IOMMUMemoryRegion *iommu_mr, MemTxAttrs attrs)
+{
+    return MEMTXATTRS_AT_IS_TRANSLATED(attrs) ?
+            VTD_IDX_TRANSLATED : VTD_IDX_UNTRANSLATED;
+}
+
+static int vtd_num_indexes(IOMMUMemoryRegion *iommu)
+{
+    return VTD_IDX_COUNT;
+}
 static void vtd_iommu_memory_region_class_init(ObjectClass *klass,
                                                      void *data)
 {
@@ -5307,6 +5317,8 @@ static void vtd_iommu_memory_region_class_init(ObjectClass *klass,
     imrc->iommu_ats_request_translation = vtd_iommu_ats_request_translation;
     imrc->get_min_page_size = vtd_get_min_page_size;
     imrc->iommu_pri_request_page = vtd_iommu_pri_request_page;
+    imrc->attrs_to_index = vtd_attrs_to_index;
+    imrc->num_indexes = vtd_num_indexes;
 }
 
 static const TypeInfo vtd_iommu_memory_region_info = {
