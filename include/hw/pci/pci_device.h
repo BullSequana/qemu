@@ -245,8 +245,14 @@ static inline MemTxResult pci_dma_rw(PCIDevice *dev, dma_addr_t addr,
                                      void *buf, dma_addr_t len,
                                      DMADirection dir, MemTxAttrs attrs)
 {
-    return dma_memory_rw(pci_get_address_space(dev), addr, buf, len,
-                         dir, attrs);
+    AddressSpace *as = attrs.pid != 0 ?
+                        pci_device_iommu_address_space_pasid(dev, pasid) :
+                        pci_get_address_space(dev);
+    if (as == NULL) {
+        return MEMTX_ERROR;
+    }
+
+    return dma_memory_rw(as, addr, buf, len, dir, attrs);
 }
 
 /**
