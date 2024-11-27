@@ -2102,7 +2102,8 @@ static void vtd_report_fault(IntelIOMMUState *s,
  */
 static bool vtd_do_iommu_translate(VTDAddressSpace *vtd_as, PCIBus *bus,
                                    uint8_t devfn, hwaddr addr, bool is_write,
-                                   IOMMUTLBEntry *entry, int iommu_idx)
+                                   bool is_priv, IOMMUTLBEntry *entry,
+                                   int iommu_idx)
 {
     IntelIOMMUState *s = vtd_as->iommu_state;
     VTDContextEntry ce;
@@ -2261,7 +2262,8 @@ static bool vtd_do_iommu_translate(VTDAddressSpace *vtd_as, PCIBus *bus,
     }
 
     page_mask = vtd_pt_level_page_mask(level);
-    access_flags = IOMMU_ACCESS_FLAG(reads, writes);
+    access_flags = IOMMU_ACCESS_FLAG_FULL(reads, writes, false, is_priv,
+                                          false, false);
     vtd_update_iotlb(s, source_id, vtd_get_domain_id(s, &ce, pasid),
                      addr, pte, access_flags, level, pasid, pgtt);
 out:
@@ -2282,7 +2284,8 @@ error:
      */
     entry->addr_mask = (level != UINT32_MAX) ?
                        (~vtd_pt_level_page_mask(level)) : (~VTD_PAGE_MASK_4K);
-    entry->perm = IOMMU_NONE;
+    entry->perm = IOMMU_ACCESS_FLAG_FULL(false, false, false, is_priv,
+                                         false, false);
     return false;
 }
 
@@ -3883,6 +3886,7 @@ static IOMMUTLBEntry vtd_iommu_translate(IOMMUMemoryRegion *iommu, hwaddr addr,
     };
     bool success;
     bool is_write = flag & IOMMU_WO;
+    bool is_priv = flag & IOMMU_PRIV;
 
     if (likely(s->dmar_enabled)) {
         if (translated && s->root_scalable) {
@@ -3891,7 +3895,8 @@ static IOMMUTLBEntry vtd_iommu_translate(IOMMUMemoryRegion *iommu, hwaddr addr,
                                                      addr, is_write);
         } else {
             success = vtd_do_iommu_translate(vtd_as, vtd_as->bus, vtd_as->devfn,
-                                            addr, is_write, &iotlb, iommu_idx);
+                                            addr, is_write, is_priv, &iotlb,
+                                            iommu_idx);
         }
     } else {
         /* DMAR disabled, passthrough, use 4k-page*/
@@ -4933,20 +4938,40 @@ static IOMMUMemoryRegion *vtd_get_memory_region_pasid(PCIBus *bus,
     return &vtd_as->iommu;
 }
 
+static inline void vtd_iommu_ats_prepare_error_entry(IOMMUTLBEntry *entry)
+{
+    entry->iova = 0;
+    entry->translated_addr = 0;
+    entry->addr_mask = ~VTD_PAGE_MASK_4K;
+    entry->perm = IOMMU_NONE;
+    entry->pasid = PCI_NO_PASID;
+}
+
 static IOMMUTLBEntry vtd_iommu_ats_do_translate(IOMMUMemoryRegion *iommu,
                                                 hwaddr addr,
                                                 IOMMUAccessFlags flags)
 {
     IOMMUTLBEntry entry;
     VTDAddressSpace *vtd_as = container_of(iommu, VTDAddressSpace, iommu);
+    IntelIOMMUState *s = vtd_as->iommu_state;
+
+    /* Guard that makes sure we avoid weird behaviors */
+    if ((flags & IOMMU_PRIV) && (s->ecap & VTD_ECAP_SRS)) {
+        error_report_once("ATS in privileged mode is not supported yet");
+        abort();
+    }
 
     if (vtd_is_interrupt_addr(addr)) {
+        vtd_iommu_ats_prepare_error_entry(&entry);
         vtd_report_ir_illegal_access(vtd_as, addr, flags & IOMMU_WO);
-        entry.iova = 0;
-        entry.translated_addr = 0;
-        entry.addr_mask = ~VTD_PAGE_MASK_4K;
-        entry.perm = IOMMU_NONE;
-        entry.pasid = PCI_NO_PASID;
+    } else if ((flags & IOMMU_PRIV) && !(s->ecap & VTD_ECAP_SRS)) {
+        /*
+         * For translation-request-with-PASID with PR=1, remapping hardware
+         * not supporting supervisor requests (SRS=0 in the Extended
+         * Capability Register) forces R=W=E=0 in addition to setting PRIV=1.
+         */
+        vtd_iommu_ats_prepare_error_entry(&entry);
+        entry.perm = IOMMU_PRIV;
     } else {
         entry = vtd_iommu_translate(iommu, addr, flags, VTD_IDX_ATS);
     }

@@ -246,7 +246,7 @@ static inline MemTxResult pci_dma_rw(PCIDevice *dev, dma_addr_t addr,
                                      DMADirection dir, MemTxAttrs attrs)
 {
     AddressSpace *as = attrs.pid != 0 ?
-                        pci_device_iommu_address_space_pasid(dev, pasid) :
+                        pci_device_iommu_address_space_pasid(dev, attrs.pid) :
                         pci_get_address_space(dev);
     if (as == NULL) {
         return MEMTX_ERROR;
