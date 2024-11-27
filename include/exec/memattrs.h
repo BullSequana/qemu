@@ -57,6 +57,9 @@ typedef struct MemTxAttrs {
      * PID (PCI PASID, 20 bits as defined by the PCIe gen5 spec)
      */
     uint64_t pid:20;
+
+    /* PCI - IOMMU operations, see PCIAddressType */
+    uint64_t address_type:1;
 } MemTxAttrs;
 
 /* Bus masters which don't specify any attributes will get this,
