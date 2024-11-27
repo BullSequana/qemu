@@ -28,20 +28,20 @@ typedef struct MemTxAttrs {
      * distinguish "all attributes deliberately clear" from
      * "didn't specify" if necessary.
      */
-    unsigned int unspecified:1;
+    uint64_t unspecified:1;
     /*
      * ARM/AMBA: TrustZone Secure access
      * x86: System Management Mode access
      */
-    unsigned int secure:1;
+    uint64_t secure:1;
     /*
      * ARM: ArmSecuritySpace.  This partially overlaps secure, but it is
      * easier to have both fields to assist code that does not understand
      * ARMv9 RME, or no specific knowledge of ARM at all (e.g. pflash).
      */
-    unsigned int space:2;
+    uint64_t space:2;
     /* Memory access is usermode (unprivileged) */
-    unsigned int user:1;
+    uint64_t user:1;
     /*
      * Bus interconnect and peripherals can access anything (memories,
      * devices) by default. By setting the 'memory' bit, bus transaction
@@ -49,14 +49,14 @@ typedef struct MemTxAttrs {
      * versus devices. Access to devices will be logged and rejected
      * (see MEMTX_ACCESS_ERROR).
      */
-    unsigned int memory:1;
+    uint64_t memory:1;
     /* Requester ID (for MSI for example) */
-    unsigned int requester_id:16;
+    uint64_t requester_id:16;
 
     /*
-     * PID (PCI PASID) support: Limited to 8 bits process identifier.
+     * PID (PCI PASID, 20 bits as defined by the PCIe gen5 spec)
      */
-    unsigned int pid:8;
+    uint64_t pid:20;
 } MemTxAttrs;
 
 /* Bus masters which don't specify any attributes will get this,
