@@ -1167,6 +1167,12 @@ static bool vtd_slpte_nonzero_rsvd(uint64_t slpte, uint32_t level)
     return slpte & rsvd_mask;
 }
 
+static inline bool vtd_addr_in_interrup_range(hwaddr addr, uint64_t size)
+{
+    return !((addr > VTD_INTERRUPT_ADDR_LAST) ||
+             (addr + size - 1 < VTD_INTERRUPT_ADDR_FIRST));
+}
+
 /* Given the @iova, get relevant @slptep. @slpte_level will be the last level
  * of the translation, can be used for deciding the size of large page.
  */
@@ -2233,8 +2239,7 @@ static bool vtd_do_iommu_translate(VTDAddressSpace *vtd_as, PCIBus *bus,
          * requests that result in an address in the interrupt range will be
          * blocked with condition code LGN.4 or SGN.8.
          */
-        if ((xlat <= VTD_INTERRUPT_ADDR_LAST &&
-             xlat + size - 1 >= VTD_INTERRUPT_ADDR_FIRST)) {
+        if (vtd_addr_in_interrup_range(xlat, size)) {
             error_report_once("%s: xlat address is in interrupt range "
                               "(iova=0x%" PRIx64 ", level=0x%" PRIx32 ", "
                               "pte=0x%" PRIx64 ", write=%d, "
@@ -3801,9 +3806,70 @@ static void vtd_mem_write(void *opaque, hwaddr addr,
     }
 }
 
+static void vtd_report_ir_illegal_access(VTDAddressSpace *vtd_as,
+                                         hwaddr addr, bool is_write)
+{
+    IntelIOMMUState *s = vtd_as->iommu_state;
+    uint8_t bus_n = pci_bus_num(vtd_as->bus);
+    uint16_t sid = PCI_BUILD_BDF(bus_n, vtd_as->devfn);
+    bool is_fpd_set = false;
+    VTDContextEntry ce;
+
+    /* Try out best to fetch FPD, we can't do anything more */
+    if (vtd_dev_to_context_entry(s, bus_n, vtd_as->devfn, &ce) == 0) {
+        is_fpd_set = ce.lo & VTD_CONTEXT_ENTRY_FPD;
+        if (!is_fpd_set && s->root_scalable && vtd_as->pasid != PCI_NO_PASID) {
+            vtd_ce_get_pasid_fpd(s, &ce, &is_fpd_set, vtd_as->pasid);
+        }
+    }
+
+    vtd_report_fault(s, VTD_FR_SM_INTERRUPT_ADDR,
+                     is_fpd_set, sid, addr, is_write,
+                     true, vtd_as->pasid);
+}
+
+static void vtd_prepare_identity_mapping(hwaddr addr, IOMMUAccessFlags perm,
+                                         uint32_t pasid, IOMMUTLBEntry *iotlb)
+{
+    iotlb->iova = addr & VTD_PAGE_MASK_4K;
+    iotlb->translated_addr = addr & VTD_PAGE_MASK_4K;
+    iotlb->addr_mask = ~VTD_PAGE_MASK_4K;
+    iotlb->perm = perm;
+    iotlb->pasid = pasid;
+}
+
+static bool vtd_process_translated_request(VTDAddressSpace *vtd_as,
+                                           IOMMUTLBEntry *iotlb, hwaddr addr,
+                                           bool is_write)
+{
+    if (vtd_as->pasid != PCI_NO_PASID) {
+        iotlb->iova = 0;
+        iotlb->translated_addr = 0;
+        iotlb->addr_mask = ~VTD_PAGE_MASK_4K;
+        iotlb->perm = IOMMU_NONE;
+        iotlb->pasid = PCI_NO_PASID;
+
+        error_report_once("%s: translated request with PASID is illegal "
+                          "(pasid=0x%" PRIx32 ")", __func__, vtd_as->pasid);
+        return false;
+    }
+
+    if (vtd_addr_in_interrup_range(addr, 1)) {
+        error_report_once("%s: address is in interrupt range "
+                          "(addr=0x%" PRIx64 ")",
+                          __func__, addr);
+        vtd_report_ir_illegal_access(vtd_as, addr, is_write);
+        return false;
+    }
+
+    vtd_prepare_identity_mapping(addr, IOMMU_RW, PCI_NO_PASID, iotlb);
+    return true;
+}
+
 static IOMMUTLBEntry vtd_iommu_translate(IOMMUMemoryRegion *iommu, hwaddr addr,
                                          IOMMUAccessFlags flag, int iommu_idx)
 {
+    bool translated = VTD_IDX_IS_TRANSLATED(iommu_idx);
     VTDAddressSpace *vtd_as = container_of(iommu, VTDAddressSpace, iommu);
     IntelIOMMUState *s = vtd_as->iommu_state;
     IOMMUTLBEntry iotlb = {
@@ -3812,16 +3878,20 @@ static IOMMUTLBEntry vtd_iommu_translate(IOMMUMemoryRegion *iommu, hwaddr addr,
         .pasid = vtd_as->pasid,
     };
     bool success;
+    bool is_write = flag & IOMMU_WO;
 
     if (likely(s->dmar_enabled)) {
-        success = vtd_do_iommu_translate(vtd_as, vtd_as->bus, vtd_as->devfn,
-                                         addr, flag & IOMMU_WO, &iotlb);
+        if (translated && s->root_scalable) {
+            /* We only support translated requests in scalable mode */
+            success = vtd_process_translated_request(vtd_as, &iotlb,
+                                                     addr, is_write);
+        } else {
+            success = vtd_do_iommu_translate(vtd_as, vtd_as->bus, vtd_as->devfn,
+                                            addr, is_write, &iotlb);
+        }
     } else {
         /* DMAR disabled, passthrough, use 4k-page*/
-        iotlb.iova = addr & VTD_PAGE_MASK_4K;
-        iotlb.translated_addr = addr & VTD_PAGE_MASK_4K;
-        iotlb.addr_mask = ~VTD_PAGE_MASK_4K;
-        iotlb.perm = IOMMU_RW;
+        vtd_prepare_identity_mapping(addr, IOMMU_RW, vtd_as->pasid, &iotlb);
         success = true;
     }
 
@@ -4271,28 +4341,6 @@ static const MemoryRegionOps vtd_mem_ir_ops = {
         .max_access_size = 4,
     },
 };
-
-static void vtd_report_ir_illegal_access(VTDAddressSpace *vtd_as,
-                                         hwaddr addr, bool is_write)
-{
-    IntelIOMMUState *s = vtd_as->iommu_state;
-    uint8_t bus_n = pci_bus_num(vtd_as->bus);
-    uint16_t sid = PCI_BUILD_BDF(bus_n, vtd_as->devfn);
-    bool is_fpd_set = false;
-    VTDContextEntry ce;
-
-    /* Try out best to fetch FPD, we can't do anything more */
-    if (vtd_dev_to_context_entry(s, bus_n, vtd_as->devfn, &ce) == 0) {
-        is_fpd_set = ce.lo & VTD_CONTEXT_ENTRY_FPD;
-        if (!is_fpd_set && s->root_scalable && vtd_as->pasid != PCI_NO_PASID) {
-            vtd_ce_get_pasid_fpd(s, &ce, &is_fpd_set, vtd_as->pasid);
-        }
-    }
-
-    vtd_report_fault(s, VTD_FR_SM_INTERRUPT_ADDR,
-                     is_fpd_set, sid, addr, is_write,
-                     true, vtd_as->pasid);
-}
 
 static MemTxResult vtd_mem_ir_fault_read(void *opaque, hwaddr addr,
                                          uint64_t *data, unsigned size,
@@ -4914,7 +4962,8 @@ static ssize_t vtd_iommu_ats_request_translation(IOMMUMemoryRegion *iommu,
     *err_count = 0;
 
     while ((addr < target_address) && (res_index < result_length)) {
-        entry = vtd_iommu_ats_do_translate(iommu, addr, flags, 0);
+        entry = vtd_iommu_ats_do_translate(iommu, addr, flags,
+                                           VTD_IDX_UNTRANSLATED);
         if (!IOMMU_TLB_ENTRY_TRANSLATION_ERROR(&entry)) { /* Translation done */
             /*
              * 4.1.2 : Global Mapping (G) : Remapping hardware provides a value
