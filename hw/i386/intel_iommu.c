@@ -2001,7 +2001,7 @@ static int vtd_iova_to_flpte(IntelIOMMUState *s, VTDContextEntry *ce,
                              uint64_t iova, bool is_write,
                              uint64_t *flptep, uint32_t *flpte_level,
                              bool *reads, bool *writes, uint8_t aw_bits,
-                             uint32_t pasid)
+                             uint32_t pasid, int iommu_idx)
 {
     dma_addr_t addr = vtd_get_iova_pgtbl_base(s, ce, pasid);
     uint32_t offset;
@@ -2042,7 +2042,8 @@ static int vtd_iova_to_flpte(IntelIOMMUState *s, VTDContextEntry *ce,
 
         *reads = true;
         *writes = (*writes) && (flpte & VTD_FL_RW);
-        if (is_write && !(flpte & VTD_FL_RW)) {
+        /* ATS translation should not fail when the W permission is not set */
+        if (is_write && !VTD_IDX_IS_ATS(iommu_idx) && !(flpte & VTD_FL_RW)) {
             return -VTD_FR_SM_WRITE;
         }
         if (vtd_flpte_nonzero_rsvd(flpte, *flpte_level)) {
@@ -2101,7 +2102,7 @@ static void vtd_report_fault(IntelIOMMUState *s,
  */
 static bool vtd_do_iommu_translate(VTDAddressSpace *vtd_as, PCIBus *bus,
                                    uint8_t devfn, hwaddr addr, bool is_write,
-                                   IOMMUTLBEntry *entry)
+                                   IOMMUTLBEntry *entry, int iommu_idx)
 {
     IntelIOMMUState *s = vtd_as->iommu_state;
     VTDContextEntry ce;
@@ -2223,7 +2224,8 @@ static bool vtd_do_iommu_translate(VTDAddressSpace *vtd_as, PCIBus *bus,
 
     if (s->flts && s->root_scalable) {
         ret_fr = vtd_iova_to_flpte(s, &ce, addr, is_write, &pte, &level,
-                                   &reads, &writes, s->aw_bits, pasid);
+                                   &reads, &writes, s->aw_bits, pasid,
+                                   iommu_idx);
         pgtt = VTD_SM_PASID_ENTRY_FLT;
     } else {
         ret_fr = vtd_iova_to_slpte(s, &ce, addr, is_write, &pte, &level,
@@ -3889,7 +3891,7 @@ static IOMMUTLBEntry vtd_iommu_translate(IOMMUMemoryRegion *iommu, hwaddr addr,
                                                      addr, is_write);
         } else {
             success = vtd_do_iommu_translate(vtd_as, vtd_as->bus, vtd_as->devfn,
-                                            addr, is_write, &iotlb);
+                                            addr, is_write, &iotlb, iommu_idx);
         }
     } else {
         /* DMAR disabled, passthrough, use 4k-page*/
@@ -4933,8 +4935,7 @@ static IOMMUMemoryRegion *vtd_get_memory_region_pasid(PCIBus *bus,
 
 static IOMMUTLBEntry vtd_iommu_ats_do_translate(IOMMUMemoryRegion *iommu,
                                                 hwaddr addr,
-                                                IOMMUAccessFlags flags,
-                                                int iommu_idx)
+                                                IOMMUAccessFlags flags)
 {
     IOMMUTLBEntry entry;
     VTDAddressSpace *vtd_as = container_of(iommu, VTDAddressSpace, iommu);
@@ -4947,7 +4948,7 @@ static IOMMUTLBEntry vtd_iommu_ats_do_translate(IOMMUMemoryRegion *iommu,
         entry.perm = IOMMU_NONE;
         entry.pasid = PCI_NO_PASID;
     } else {
-        entry = vtd_iommu_translate(iommu, addr, flags, iommu_idx);
+        entry = vtd_iommu_translate(iommu, addr, flags, VTD_IDX_ATS);
     }
     return entry;
 }
@@ -4969,8 +4970,7 @@ static ssize_t vtd_iommu_ats_request_translation(IOMMUMemoryRegion *iommu,
     *err_count = 0;
 
     while ((addr < target_address) && (res_index < result_length)) {
-        entry = vtd_iommu_ats_do_translate(iommu, addr, flags,
-                                           VTD_IDX_UNTRANSLATED);
+        entry = vtd_iommu_ats_do_translate(iommu, addr, flags);
         if (!IOMMU_TLB_ENTRY_TRANSLATION_ERROR(&entry)) { /* Translation done */
             /*
              * 4.1.2 : Global Mapping (G) : Remapping hardware provides a value

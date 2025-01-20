@@ -666,9 +666,11 @@ typedef struct VTDRootEntry VTDRootEntry;
 typedef enum VTDIOMMUIndex {
     VTD_IDX_UNTRANSLATED = 0, /* Default */
     VTD_IDX_TRANSLATED = 1,
-    VTD_IDX_COUNT = 2, /* Number of supported indexes */
+    VTD_IDX_ATS = 2,
+    VTD_IDX_COUNT = 3, /* Number of supported indexes */
 } VTDIOMMUIndex;
 
 #define VTD_IDX_IS_TRANSLATED(idx) ((idx) == VTD_IDX_TRANSLATED)
+#define VTD_IDX_IS_ATS(idx) ((idx) == VTD_IDX_ATS)
 
 #endif
