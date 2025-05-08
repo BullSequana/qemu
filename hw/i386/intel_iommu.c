@@ -4194,7 +4194,7 @@ static const MemoryRegionOps vtd_mem_ir_fault_ops = {
 };
 
 VTDAddressSpace *vtd_find_add_as(IntelIOMMUState *s, PCIBus *bus,
-                                 int devfn, unsigned int pasid)
+                                 int devfn, uint32_t pasid)
 {
     /*
      * We can't simply use sid here since the bus number might not be
