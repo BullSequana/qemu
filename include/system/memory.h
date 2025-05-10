@@ -147,6 +147,10 @@ struct IOMMUTLBEntry {
     uint32_t         pasid;
 };
 
+/* Check if an IOMMU TLB entry indicates a translation error */
+#define IOMMU_TLB_ENTRY_TRANSLATION_ERROR(entry) ((((entry)->perm) & IOMMU_RW) \
+                                                    == IOMMU_NONE)
+
 /*
  * Bitmap for different IOMMUNotifier capabilities. Each notifier can
  * register with one or multiple IOMMU Notifier capability bit(s).
