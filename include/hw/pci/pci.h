@@ -431,6 +431,22 @@ typedef struct PCIIOMMUOps {
      */
     AddressSpace * (*get_address_space)(PCIBus *bus, void *opaque, int devfn);
     /**
+     * @get_address_space_pasid: same as get_address_space but returns an
+     * address space with the requested PASID
+     *
+     * This callback is required for PASID-based operations
+     *
+     * @bus: the #PCIBus being accessed.
+     *
+     * @opaque: the data passed to pci_setup_iommu().
+     *
+     * @devfn: device and function number
+     *
+     * @pasid: the pasid associated with the requested memory region
+     */
+    AddressSpace * (*get_address_space_pasid)(PCIBus *bus, void *opaque,
+                                              int devfn, uint32_t pasid);
+    /**
      * @set_iommu_device: attach a HostIOMMUDevice to a vIOMMU
      *
      * Optional callback, if not implemented in vIOMMU, then vIOMMU can't
@@ -638,6 +654,8 @@ typedef struct PCIIOMMUOps {
 } PCIIOMMUOps;
 
 AddressSpace *pci_device_iommu_address_space(PCIDevice *dev);
+AddressSpace *pci_device_iommu_address_space_pasid(PCIDevice *dev,
+                                                   uint32_t pasid);
 bool pci_device_set_iommu_device(PCIDevice *dev, HostIOMMUDevice *hiod,
                                  Error **errp);
 void pci_device_unset_iommu_device(PCIDevice *dev);
